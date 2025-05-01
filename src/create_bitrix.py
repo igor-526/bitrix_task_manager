@@ -1,4 +1,5 @@
 import datetime
+from pprint import pprint
 from typing import Any, Dict
 
 import aiohttp
@@ -11,11 +12,16 @@ from settings import BITRIX_BASE_URL, BITRIX_CLIENT_ID, BITRIX_CLIENT_SECRET
 from sqlalchemy import select, update
 
 
-class BitrixException(BaseException):
-    def __init__(self, message):
-        self.message = message
+class BitrixException(Exception):
+    def __init__(self, *args):
+        if args:
+            self.message = args[0]
+        else:
+            self.message = None
 
-    __str__ = BaseException.__str__
+    def __str__(self):
+        return self.message if self.message else \
+            "В библиотеке API Битрикс24 произошла ошибка"
 
 
 class AsyncBitrixClient:
@@ -63,6 +69,20 @@ class AsyncBitrixClient:
         self.access_token = new_access_token
         self.refresh_token = new_refresh_token
 
+    async def _prepare_response(self, response):
+        json_response = await response.json()
+        if response.status == 200:
+            return json_response
+        print(response.status)
+        pprint(json_response)
+        if response.status == 401:
+            if json_response.get('error') == 'expired_token':
+                await self._refresh_token()
+                return {"token_refreshed": True}
+            raise BitrixException(json_response.get("error"))
+        if response.status == 400:
+            raise BitrixException(json_response.get("error"))
+
     def _get_url(self, endpoint,
                  select_params=None, filter_params=None) -> str:
         url_params = []
@@ -88,12 +108,10 @@ class AsyncBitrixClient:
             response = await session.get(self._get_url(endpoint,
                                                        select_params,
                                                        filter_params))
-            if response.status == 200:
-                return await response.json()
-            elif (response.status == 401 and
-                  (await response.json()).get("error") == 'expired_token'):
-                await self._refresh_token()
+            response = await self._prepare_response(response)
+            if response.get("token_refreshed"):
                 return await self.get(endpoint, select_params, filter_params)
+            return response
 
     def check_param(self, param: Any) -> str | int | None:
         if type(param) is datetime.datetime:
@@ -125,14 +143,7 @@ class AsyncBitrixClient:
             response = await session.post(
                 url=f'{BITRIX_BASE_URL}rest/{endpoint}/',
                 params=self._get_post_params(fields, **kwargs))
-            if response.status == 200:
-                return await response.json()
-            elif response.status == 400:
-                print(await response.json())
-                raise BitrixException(
-                    (await response.json()).get("error_description")
-                )
-            elif (response.status == 401 and
-                  (await response.json()).get("error") == 'expired_token'):
-                await self._refresh_token()
-                return await self.post(endpoint, fields)
+            response = await self._prepare_response(response)
+            if response.get("token_refreshed"):
+                return await self.post(endpoint, fields, **kwargs)
+            return response

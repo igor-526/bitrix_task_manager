@@ -4,16 +4,50 @@ from typing import Any, Awaitable, Callable, Dict, Union
 from aiogram import BaseMiddleware
 from aiogram.types import CallbackQuery, Message
 
-from create_bitrix import AsyncBitrixClient
+from create_bitrix import AsyncBitrixClient, BitrixException
 
 from create_bot import bot
 
+from database.engine import async_session_maker
 from database.models import User
 
 from keyboards.menu_keyboards import get_authorize_button
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
+
+
+class ExceptionLoggingMiddleware(BaseMiddleware):
+    async def __call__(
+            self,
+            handler: Callable[[Union[Message, CallbackQuery],
+                               Dict[str, Any]], Awaitable[Any]],
+            event: Union[Message, CallbackQuery],
+            data: Dict[str, Any]
+    ) -> Any:
+        try:
+            return await handler(event, data)
+        except BitrixException as ex:
+            error = ex.message
+            if error == "NO_AUTH_FOUND":
+                error = "Нет данных для авторизации"
+            elif error == "invalid_token":
+                async with async_session_maker() as session:
+                    query = delete(User).where(
+                        User.tg_id == event.from_user.id
+                    )
+                    await session.execute(query)
+                    await session.commit()
+                await bot.send_message(
+                    chat_id=event.from_user.id,
+                    text='Произошла ошибка в авторизации:\n'
+                         'Пожалуйста, войдите снова',
+                    reply_markup=get_authorize_button(event.from_user.id)
+                )
+                return None
+            await bot.send_message(chat_id=event.from_user.id,
+                                   text=f'Произошла ошибка в работе бота:\n'
+                                        f'{error}')
 
 
 class SetAccessTokenMiddleware(BaseMiddleware):

@@ -1,11 +1,12 @@
 from typing import Dict
 
+from database.engine import session_maker
+from database.models import User
+
 from flask import Flask, render_template, request
 
 import requests
 
-from database.engine import session_maker
-from database.models import User
 from settings import (BITRIX_CLIENT_ID,
                       BITRIX_CLIENT_SECRET,
                       TG_BOT_NICKNAME)

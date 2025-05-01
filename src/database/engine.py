@@ -6,8 +6,10 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from .models import Base
 
-async_engine = create_async_engine('sqlite+aiosqlite:///db.db', echo=True)
-sync_engine = create_engine('sqlite:///db.db', echo=True)
+async_engine = create_async_engine(url='sqlite+aiosqlite:///dbfile/db.db',
+                                   echo=True)
+sync_engine = create_engine(url='sqlite:///dbfile/db.db',
+                            echo=True)
 
 async_session_maker = async_sessionmaker(bind=async_engine,
                                          class_=AsyncSession,

@@ -7,7 +7,9 @@ from database.engine import async_session_maker, create_db
 
 from handlers import router as main_router
 
-from middlewares import MediaMiddleware, SetAccessTokenMiddleware
+from middlewares import (ExceptionLoggingMiddleware,
+                         MediaMiddleware,
+                         SetAccessTokenMiddleware)
 
 
 async def bot_start_polling() -> None:
@@ -18,6 +20,12 @@ async def bot_start_polling() -> None:
     )
     dp.callback_query.middleware.register(
         SetAccessTokenMiddleware(async_session_maker)
+    )
+    dp.message.middleware.register(
+        ExceptionLoggingMiddleware()
+    )
+    dp.callback_query.middleware.register(
+        ExceptionLoggingMiddleware()
     )
     dp.message.middleware.register(MediaMiddleware())
     await dp.start_polling(bot)
