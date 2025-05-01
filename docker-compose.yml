@@ -5,9 +5,11 @@ services:
   bitrix_taskmanager_bot:
     build: .
     environment:
-      BASE_BITRIX_WEBHOOK_URL: ${BASE_BITRIX_WEBHOOK_URL}
-      BITRIX_TG_ID_FIELD: ${BITRIX_TG_ID_FIELD}
       TG_BOT_TOKEN: ${TG_BOT_TOKEN}
+      TG_BOT_NICKNAME: ${TG_BOT_NICKNAME}
+      BITRIX_CLIENT_ID: ${BITRIX_CLIENT_ID}
+      BITRIX_CLIENT_SECRET: ${BITRIX_CLIENT_SECRET}
+      BITRIX_BASE_URL: ${BITRIX_BASE_URL}
       REDIS_HOST: ${REDIS_HOST}
     entrypoint: bash -c "python main.py";
     depends_on:
@@ -19,9 +21,11 @@ services:
     ports:
       - "${GUNICORN_PORT_FORWARD}:5000"
     environment:
-      BASE_BITRIX_WEBHOOK_URL: ${BASE_BITRIX_WEBHOOK_URL}
-      BITRIX_TG_ID_FIELD: ${BITRIX_TG_ID_FIELD}
       TG_BOT_TOKEN: ${TG_BOT_TOKEN}
+      TG_BOT_NICKNAME: ${TG_BOT_NICKNAME}
+      BITRIX_CLIENT_ID: ${BITRIX_CLIENT_ID}
+      BITRIX_CLIENT_SECRET: ${BITRIX_CLIENT_SECRET}
+      BITRIX_BASE_URL: ${BITRIX_BASE_URL}
       REDIS_HOST: ${REDIS_HOST}
     entrypoint: bash -c "gunicorn --bind 0.0.0.0:5000 web_server:app";
     restart: always

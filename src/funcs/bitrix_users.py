@@ -1,14 +1,17 @@
 from typing import Dict, List
-from create_bitrix import bitrix
+
+from create_bitrix import AsyncBitrixClient
 
 
-async def bitrix_get_users(ids: list = None) -> List[Dict[str, str]]:
-    params = {
-        'filter': {'ACTIVE': True}
-    }
+async def bitrix_get_users(bitrix: AsyncBitrixClient,
+                           ids: list = None) -> List[Dict[str, str]]:
+    filter_params = {'ACTIVE': True}
     if ids is not None:
-        params['filter']["@ID"] = ids
-    users = await bitrix.get_all('user.get', params=params)
+        filter_params["@ID"] = ids
+    select_params = ["ID", "NAME", "LAST_NAME"]
+    users = await bitrix.get('user.get',
+                             filter_params=filter_params,
+                             select_params=select_params)
     return [{"first_name": user.get("NAME"),
              "last_name": user.get("LAST_NAME"),
-             "id": user.get("ID")} for user in users]
+             "id": user.get("ID")} for user in users["result"]]

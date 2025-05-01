@@ -1,10 +1,14 @@
-from aiogram import Router, F
-from aiogram.fsm.context import FSMContext
+from aiogram import F, Router
 from aiogram.types import CallbackQuery
+
+from create_bitrix import AsyncBitrixClient
+
 from create_bot import bot
+
 from funcs.bitrix_tasks import BitrixTask
-from keyboards.task_keyboards import (TaskMainCallback,
-                                      TaskChangeParticipantsCallback)
+
+from keyboards.task_keyboards import (TaskChangeParticipantsCallback,
+                                      TaskMainCallback)
 from keyboards.users_keyboard import get_all_users_keyboard
 
 router = Router(name=__name__)
@@ -14,9 +18,10 @@ router = Router(name=__name__)
     F.action == "change_responsible")
 )
 async def h_tasks_change_responsible(callback: CallbackQuery,
-                                     callback_data: TaskMainCallback) \
+                                     callback_data: TaskMainCallback,
+                                     bitrix: AsyncBitrixClient) \
         -> None:
-    task = BitrixTask()
+    task = BitrixTask(bitrix)
     result = await task.init_task_from_id(callback_data.task_id)
     if result.get("status") is False:
         await callback.answer("Ошибка! Задача не найдена")
@@ -25,6 +30,7 @@ async def h_tasks_change_responsible(callback: CallbackQuery,
     await callback.message.edit_text(
         text="Выберите нового исполнителя:",
         reply_markup=await get_all_users_keyboard(
+            bitrix,
             callback_data=TaskChangeParticipantsCallback(
                 task_id=callback_data.task_id,
                 action="responsible",
@@ -41,19 +47,16 @@ async def h_tasks_change_responsible(callback: CallbackQuery,
 async def h_tasks_change_responsible_apply(callback: CallbackQuery,
                                            callback_data:
                                            TaskChangeParticipantsCallback,
-                                           state: FSMContext) -> None:
-    task = BitrixTask()
+                                           bitrix: AsyncBitrixClient) -> None:
+    task = BitrixTask(bitrix)
     task.id = callback_data.task_id
     task.responsible_id = callback_data.user_id
     result = await task.update()
     if result.get("status"):
         await task.init_task_from_id(callback_data.task_id)
         await task.update_all_users_info()
-        state_data = await state.get_data()
         await callback.message.edit_text(
-            **await task.generate_task_message(
-                int(state_data.get("bitrix_id"))
-            )
+            **await task.generate_task_message()
         )
     if result.get("status") is False:
         await bot.send_message(chat_id=callback.from_user.id,

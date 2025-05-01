@@ -1,10 +1,14 @@
 import datetime
-from typing import List, Dict
+from typing import Dict, List
+
 from aiogram.fsm.context import FSMContext
-from create_bitrix import bitrix
-from funcs.bitrix_users import bitrix_get_users
-from keyboards.task_keyboards import get_task_keyboard, creating_task_keyboard
 from aiogram.types import Message
+
+from create_bitrix import AsyncBitrixClient
+
+from funcs.bitrix_users import bitrix_get_users
+
+from keyboards.task_keyboards import creating_task_keyboard, get_task_keyboard
 
 
 class BitrixTask:
@@ -18,8 +22,9 @@ class BitrixTask:
     accomplices: List[int]
     auditors: List[int]
     all_users_info: List[Dict]
+    bitrix: AsyncBitrixClient
 
-    def __init__(self) -> None:
+    def __init__(self, bitrix: AsyncBitrixClient) -> None:
         self.accomplices = []
         self.auditors = []
         self.all_users_info = []
@@ -30,20 +35,21 @@ class BitrixTask:
         self.created_by = None
         self.responsible_id = None
         self.deadline = None
+        self.bitrix = bitrix
 
     def init_task_from_sd(self, state_data: dict) -> None:
         full_comment = "\n".join(state_data["comment"])
         self.title = full_comment.replace("\n", " ")[:40]
         self.description = full_comment
-        self.created_by = state_data.get("bitrix_id")
-        self.responsible_id = state_data.get("bitrix_id")
+        self.created_by = self.bitrix.user_id
+        self.responsible_id = self.bitrix.user_id
         self.deadline = datetime.datetime.now() + datetime.timedelta(days=1)
 
     async def init_task_from_id(self, task_id: int) \
             -> Dict[str: bool, str: str | None]:
-        task = await bitrix.get_all('tasks.task.list', params={
-            'filter': {'ID': task_id},
-        })
+        task = await self.bitrix.get(endpoint='tasks.task.list',
+                                     filter_params={'ID': task_id})
+        task = task["result"]["tasks"]
         if task:
             self.id = int(task[0].get("id"))
             self.title = task[0].get("title")
@@ -64,67 +70,60 @@ class BitrixTask:
 
     async def update_all_users_info(self) -> None:
         self.all_users_info = await bitrix_get_users(
+            self.bitrix,
             [self.created_by, self.responsible_id,
              *self.accomplices, *self.auditors])
 
     async def add_task(self) -> Dict[str: bool, str: str | None]:
-        try:
-            task = await bitrix.call('tasks.task.add', {
-                'fields': {
-                    'TITLE': self.title,
-                    'DESCRIPTION': self.description,
-                    "PRIORITY": 1,
-                    'CREATED_BY': self.created_by,
-                    'RESPONSIBLE_ID': self.responsible_id,
-                    'ACCOMPLICES': [],
-                    'AUDITORS': [],
-                    'DEADLINE': self.deadline
-                }})
-            self.id = task.get('id')
-            await self.update_all_users_info()
-            return {
-                "status": True,
-                "error": None
-            }
-        except Exception as e:
-            return {
-                "status": False,
-                "error": str(e)
-            }
+        task = await self.bitrix.post('tasks.task.add', {
+            'TITLE': self.title,
+            'DESCRIPTION': self.description,
+            "PRIORITY": 1,
+            'CREATED_BY': self.created_by,
+            'RESPONSIBLE_ID': self.responsible_id,
+            'ACCOMPLICES': [],
+            'AUDITORS': [],
+            'DEADLINE': self.deadline
+        })
+        self.id = task["result"]["task"].get('id')
+        await self.update_all_users_info()
+        return {
+            "status": True,
+            "error": None
+        }
 
-    async def generate_task_message(self, user_id: int) \
+    async def generate_task_message(self) \
             -> Dict[str: str, str: None]:
         msg_text = ""
         msg_text += f'<b>Наименование</b>: {self.title}\n'
         msg_text += f'<b>Описание</b>: {self.description}\n'
         return {
             "text": msg_text,
-            "reply_markup": get_task_keyboard(self, user_id)
+            "reply_markup": get_task_keyboard(self, self.bitrix.user_id)
         }
 
     async def update(self) -> Dict[str: str, str | None]:
-        params = {
-            "taskId": self.id,
-            "fields": {}
-        }
+        fields = dict()
         if self.created_by:
-            params["fields"]["CREATED_BY"] = self.created_by
+            fields["CREATED_BY"] = self.created_by
         if self.responsible_id:
-            params["fields"]["RESPONSIBLE_ID"] = self.responsible_id
+            fields["RESPONSIBLE_ID"] = self.responsible_id
         if self.accomplices:
-            params["fields"]["ACCOMPLICES"] = self.accomplices
+            fields["ACCOMPLICES"] = self.accomplices
         if self.auditors:
-            params["fields"]["AUDITORS"] = self.auditors
+            fields["AUDITORS"] = self.auditors
         if self.deadline:
-            params["fields"]["DEADLINE"] = self.deadline
+            fields["DEADLINE"] = self.deadline
         if self.priority:
-            params["fields"]["PRIORITY"] = self.priority
+            fields["PRIORITY"] = self.priority
         if self.title:
-            params["fields"]["TITLE"] = self.title
+            fields["TITLE"] = self.title
         if self.description:
-            params["fields"]["DESCRIPTION"] = self.description
+            fields["DESCRIPTION"] = self.description
         try:
-            await bitrix.call('tasks.task.update', params)
+            await self.bitrix.post('tasks.task.update',
+                                   fields=fields,
+                                   taskId=self.id)
             return {"status": True,
                     "error": None}
         except Exception as e:
@@ -148,23 +147,27 @@ async def f_bitrix_tasks_keep(message: Message, state: FSMContext) -> None:
                         reply_markup=creating_task_keyboard)
 
 
-async def f_bitrix_get_created_tasks(bitrix_id: int) \
+async def f_bitrix_get_created_tasks(bitrix: AsyncBitrixClient) \
         -> List[Dict[str: str, str: List]]:
-    tasks_created = await bitrix.get_all('tasks.task.list', params={
-        'filter': {"CREATED_BY": bitrix_id},
-        'select': ["ID", "TITLE", "RESPONSIBLE_ID"]
-    })
-    tasks_auditor = await bitrix.get_all('tasks.task.list', params={
-        'filter': {"AUDITOR": bitrix_id},
-        'select': ["ID", "TITLE", "RESPONSIBLE_ID"]
-    })
-    return [*tasks_created, *tasks_auditor]
+    tasks_created = await bitrix.get('tasks.task.list',
+                                     select_params=["ID", "TITLE",
+                                                    "RESPONSIBLE_ID"],
+                                     filter_params={
+                                         "CREATED_BY": bitrix.user_id
+                                     })
+    tasks_auditor = await bitrix.get('tasks.task.list',
+                                     select_params=["ID", "TITLE",
+                                                    "RESPONSIBLE_ID"],
+                                     filter_params={"AUDITOR": bitrix.user_id})
+    return [*tasks_created['result']['tasks'],
+            *tasks_auditor['result']['tasks']]
 
 
-async def f_bitrix_get_my_tasks(bitrix_id: int) \
+async def f_bitrix_get_my_tasks(bitrix: AsyncBitrixClient) \
         -> List[Dict[str: str, str: List]]:
-    tasks = await bitrix.get_all('tasks.task.list', params={
-        'filter': {"RESPONSIBLE_ID": bitrix_id},
-        'select': ["ID", "TITLE", "DEADLINE", "RESPONSIBLE_ID"]
-    })
-    return tasks
+    select_params = ["ID", "TITLE", "DEADLINE", "RESPONSIBLE_ID"]
+    filter_params = {"RESPONSIBLE_ID": bitrix.user_id}
+    tasks = await bitrix.get(endpoint='tasks.task.list',
+                             select_params=select_params,
+                             filter_params=filter_params)
+    return tasks['result']['tasks']

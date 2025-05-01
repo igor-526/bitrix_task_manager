@@ -1,32 +1,48 @@
-from typing import Callable, Dict, Any, Awaitable
-from typing import Union
-from aiogram import BaseMiddleware
-from aiogram.types import Message, CallbackQuery
-from create_bot import bot
 import asyncio
-from funcs.bitrix_auth import get_user_id_by_tg
+from typing import Any, Awaitable, Callable, Dict, Union
+
+from aiogram import BaseMiddleware
+from aiogram.types import CallbackQuery, Message
+
+from create_bitrix import AsyncBitrixClient
+
+from create_bot import bot
+
+from database.models import User
+
+from keyboards.menu_keyboards import get_authorize_button
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 
-class AuthLogsMiddleware(BaseMiddleware):
+class SetAccessTokenMiddleware(BaseMiddleware):
+    def __init__(self, session_pool: async_sessionmaker):
+        self.session_pool = session_pool
+
     async def __call__(
             self,
-            handler: Callable[[CallbackQuery, Dict[str, Any]], Awaitable[Any]],
-            event: CallbackQuery,
+            handler: Callable[[Union[Message, CallbackQuery],
+                               Dict[str, Any]], Awaitable[Any]],
+            event: Union[Message, CallbackQuery],
             data: Dict[str, Any]
     ) -> Any:
-        state_data = await data.get("state").get_data()
-        if "bitrix_id" not in state_data:
-            bitrix_id = await get_user_id_by_tg(event.from_user.id)
-            if not bitrix_id:
+        async with self.session_pool() as session:
+            query = select(User).where(User.tg_id == event.from_user.id)
+            result = await session.execute(query)
+            user = result.scalar_one_or_none()
+            if not user:
                 await bot.send_message(
                     chat_id=event.from_user.id,
-                    text=f"Не удалось найти Вашу учётную запись Bitrix24.\n"
-                         f"Для привязки отправьте администратору Bitrix24 "
-                         f"следующую информацию:\n\n"
-                         f"TELEGRAM_ID: <code>{event.from_user.id}</code>"
+                    text="Нажмите на кнопку для авторизации на портале",
+                    reply_markup=get_authorize_button(event.from_user.id)
                 )
                 return None
-            await data.get("state").update_data(bitrix_id=bitrix_id)
+            data['bitrix'] = AsyncBitrixClient(
+                access_token=user.access_token,
+                refresh_token=user.refresh_token,
+                user_id=user.bx_id
+            )
         return await handler(event, data)
 
 

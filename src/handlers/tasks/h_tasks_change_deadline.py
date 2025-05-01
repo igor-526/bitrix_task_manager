@@ -1,12 +1,17 @@
 import datetime
-from aiogram import Router, F
-from aiogram.fsm.context import FSMContext
+
+from aiogram import F, Router
 from aiogram.types import CallbackQuery
+
+from create_bitrix import AsyncBitrixClient
+
 from create_bot import bot
+
 from funcs.bitrix_tasks import BitrixTask
-from keyboards.task_keyboards import (TaskMainCallback,
-                                      get_deadline_buttons,
-                                      TaskChangeDeadlineCallback)
+
+from keyboards.task_keyboards import (TaskChangeDeadlineCallback,
+                                      TaskMainCallback,
+                                      get_deadline_buttons)
 
 router = Router(name=__name__)
 
@@ -23,8 +28,8 @@ async def h_tasks_change_deadline(callback: CallbackQuery,
 async def h_tasks_change_deadline_apply(callback: CallbackQuery,
                                         callback_data:
                                         TaskChangeDeadlineCallback,
-                                        state: FSMContext) -> None:
-    task = BitrixTask()
+                                        bitrix: AsyncBitrixClient) -> None:
+    task = BitrixTask(bitrix)
     task.id = callback_data.task_id
     task.deadline = datetime.datetime(
         year=callback_data.year,
@@ -38,11 +43,8 @@ async def h_tasks_change_deadline_apply(callback: CallbackQuery,
     if result.get("status"):
         await task.init_task_from_id(callback_data.task_id)
         await task.update_all_users_info()
-        state_data = await state.get_data()
         await callback.message.edit_text(
-            **await task.generate_task_message(
-                int(state_data.get("bitrix_id"))
-            )
+            **await task.generate_task_message()
         )
     if result.get("status") is False:
         await bot.send_message(chat_id=callback.from_user.id,

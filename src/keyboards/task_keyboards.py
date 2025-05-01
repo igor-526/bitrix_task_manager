@@ -1,10 +1,11 @@
 import datetime
-from typing import List, Dict
+from typing import Dict, List
+
+from aiogram.filters.callback_data import CallbackData
 from aiogram.types import (InlineKeyboardMarkup,
                            KeyboardButton,
                            ReplyKeyboardMarkup)
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from aiogram.filters.callback_data import CallbackData
 
 add_task_button = KeyboardButton(text="Добавить задачу")
 cancel_button = KeyboardButton(text="Отмена")
@@ -92,6 +93,7 @@ def get_task_keyboard(task, user_id: int) -> InlineKeyboardMarkup:
                                            action="change_deadline")
         )
 
+    print(task.all_users_info)
     builder = InlineKeyboardBuilder()
     add_created_by_button()
     add_responsible_button()

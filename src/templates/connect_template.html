@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Авторизация</title>
+</head>
+<body style="margin: 0;">
+    <div style="height: 100vh; width: 100vw; background-color: rgb(204, 204, 204); display: flex; justify-content: center; align-items: center; flex-direction: column;">
+        {% if connect_status %}
+        <span style="font-size: 20px;">Авторизация прошла успешно<br>Для продолжения нажмите на кнопку</span>
+        <a href="https://t.me/{{ bot_nickname }}"><button style="margin: 20px; width: 150px; height: 50px; background-color: white; border: 1px solid black; border-radius: 15px;">Перейти в бот</button></a>
+        {% else %}
+        <span style="font-size: 20px;">Что то пошло не так<br>Попробуйте позже</span>
+        {% endif %}
+    </div>
+</body>
+</html>

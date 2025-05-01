@@ -1,10 +1,14 @@
+from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from aiogram.filters.callback_data import CallbackData
+
+from create_bitrix import AsyncBitrixClient
+
 from funcs.bitrix_users import bitrix_get_users
 
 
-async def get_all_users_keyboard(callback_data: CallbackData,
+async def get_all_users_keyboard(bitrix: AsyncBitrixClient,
+                                 callback_data: CallbackData,
                                  accept_symbol: list = None,
                                  cross_symbol: list = None) \
         -> InlineKeyboardMarkup:
@@ -13,7 +17,7 @@ async def get_all_users_keyboard(callback_data: CallbackData,
         accept_symbol = []
     if cross_symbol is None:
         cross_symbol = []
-    all_users = await bitrix_get_users()
+    all_users = await bitrix_get_users(bitrix)
     for user in all_users:
         text = ""
         if int(user.get("id")) in accept_symbol:
