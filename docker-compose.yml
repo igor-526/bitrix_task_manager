@@ -1,5 +1,6 @@
 volumes:
   bitrix_taskmanager_redisdata:
+  bitrix_taskmanager_database_data:
 
 services:
   bitrix_taskmanager_bot:
@@ -15,6 +16,8 @@ services:
     depends_on:
       - bitrix_taskmanager_redis
     restart: always
+    volumes:
+      - bitrix_taskmanager_database_data:/src/dbfile
 
   bitrix_taskmanager_authserver:
     build: .
@@ -29,6 +32,8 @@ services:
       REDIS_HOST: ${REDIS_HOST}
     entrypoint: bash -c "gunicorn --bind 0.0.0.0:5000 web_server:app";
     restart: always
+    volumes:
+      - bitrix_taskmanager_database_data:/src/dbfile
 
   bitrix_taskmanager_redis:
     image: redis:latest
